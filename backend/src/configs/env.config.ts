@@ -15,4 +15,5 @@ export const validationSchema = Joi.object({
     .positive()
     .max(604800)
     .default(300),
+  AWS_DYNAMODB_TABLE_NAME: Joi.string().trim().min(1).required(),
 });

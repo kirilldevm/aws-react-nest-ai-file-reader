@@ -42,6 +42,10 @@ export class S3Service {
     return this.s3Client;
   }
 
+  getDefaultPresignExpiresSeconds(): number {
+    return this.presignExpiresSeconds;
+  }
+
   async createUploadPresignedUrl(input: {
     key: string;
     contentType?: string;
