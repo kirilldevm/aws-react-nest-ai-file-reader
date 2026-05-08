@@ -1,0 +1,13 @@
+import { registerAs } from '@nestjs/config';
+
+export default registerAs('config', () => ({
+  aws: {
+    region: process.env.AWS_REGION,
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    bucket: process.env.AWS_S3_BUCKET,
+    presignExpiresSeconds: Number(
+      process.env.AWS_S3_PRESIGN_EXPIRES_SECONDS ?? 300,
+    ),
+  },
+}));
