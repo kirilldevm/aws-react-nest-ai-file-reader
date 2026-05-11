@@ -1,0 +1,64 @@
+name: Deploy Backend To EC2
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend-ec2.yml"
+
+concurrency:
+  group: deploy-backend-ec2
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build And Deploy Backend
+    runs-on: [self-hosted, linux, x64]
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEPLOY_PATH: ${{ vars.EC2_BACKEND_PATH }}
+      SERVICE_NAME: ${{ vars.EC2_BACKEND_SERVICE }}
+      NODE_ENV: production
+    steps:
+      - name: Validate required variables
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_PATH:?Missing repo variable EC2_BACKEND_PATH}"
+          : "${SERVICE_NAME:?Missing repo variable EC2_BACKEND_SERVICE}"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Sync backend to deploy path
+        run: |
+          set -euo pipefail
+          mkdir -p "$DEPLOY_PATH"
+          rsync -az --delete \
+            --exclude "node_modules" \
+            --exclude "dist" \
+            --exclude ".env" \
+            ./backend/ "$DEPLOY_PATH/"
+
+      - name: Install dependencies and build
+        working-directory: ${{ env.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          npm prune --omit=dev
+
+      - name: Restart backend service
+        run: |
+          set -euo pipefail
+          sudo systemctl restart "$SERVICE_NAME"
+          sudo systemctl --no-pager --full status "$SERVICE_NAME" | head -n 40
