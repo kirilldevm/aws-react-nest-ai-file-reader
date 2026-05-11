@@ -1,12 +1,9 @@
 import { createBrowserRouter, Navigate } from 'react-router';
 import AuthLayout from '../layouts/auth-layout';
-import Home from '../pages/home';
+import DocumentsPage from '../pages/documents-page';
+import LoginPage from '../pages/login-page';
 
 export const routes = createBrowserRouter([
-  {
-    path: '/',
-    element: <Navigate to='/' replace />,
-  },
   {
     path: '/login',
     element: <LoginPage />,
@@ -14,6 +11,13 @@ export const routes = createBrowserRouter([
   {
     path: '/',
     element: <AuthLayout />,
-    children: [{ index: true, element: <Home /> }],
+    children: [
+      { index: true, element: <Navigate to='/documents' replace /> },
+      { path: 'documents', element: <DocumentsPage /> },
+    ],
+  },
+  {
+    path: '*',
+    element: <Navigate to='/documents' replace />,
   },
 ]);

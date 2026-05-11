@@ -5,6 +5,9 @@ export const validationSchema = Joi.object({
     .valid('development', 'production', 'test')
     .default('development'),
 
+  /** Comma-separated origins for browser clients (e.g. Vite dev server). */
+  CORS_ORIGIN: Joi.string().allow('').optional(),
+
   AWS_ACCESS_KEY_ID: Joi.string().allow('').optional(),
   AWS_SECRET_ACCESS_KEY: Joi.string().allow('').optional(),
 
