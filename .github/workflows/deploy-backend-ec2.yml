@@ -24,7 +24,6 @@ jobs:
       DEPLOY_PATH: ${{ vars.EC2_BACKEND_PATH }}
       SERVICE_NAME: ${{ vars.EC2_BACKEND_SERVICE }}
       BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
-      NODE_ENV: production
     steps:
       - name: Validate required variables
         run: |
@@ -57,7 +56,7 @@ jobs:
           set -euo pipefail
           printf "%s\n" "$BACKEND_ENV" > .env
           chmod 600 .env
-          npm ci
+          npm ci --include=dev
           npm run build
           npm prune --omit=dev
 
