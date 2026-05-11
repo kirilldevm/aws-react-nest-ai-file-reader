@@ -10,7 +10,7 @@ export const fileProcessingStatusSchema = z.enum([
 export const fileStatusResponseSchema = z.object({
   status: fileProcessingStatusSchema,
   updatedAt: z.string().nullable(),
-  error: z.string().optional(),
+  error: z.string().nullable().optional(),
 });
 
 export const filePresignResponseSchema = z.object({
