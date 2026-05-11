@@ -1,0 +1,231 @@
+service: ai-file-pipeline
+
+frameworkVersion: '4'
+
+custom:
+  s3Bucket: ${env:AWS_S3_BUCKET, 'REPLACE_WITH_YOUR_BUCKET_NAME'}
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+  memorySize: 512
+  timeout: 120
+  environment:
+    OPENAI_API_KEY: ${env:OPENAI_API_KEY, ''}
+    OPENAI_EMBEDDING_MODEL: ${env:OPENAI_EMBEDDING_MODEL, 'text-embedding-3-small'}
+    PINECONE_API_KEY: ${env:PINECONE_API_KEY, ''}
+    PINECONE_INDEX_NAME: ${env:PINECONE_INDEX_NAME, ''}
+    BACKEND_URL: ${env:BACKEND_URL, ''}
+    INTERNAL_PIPELINE_SECRET: ${env:INTERNAL_PIPELINE_SECRET, ''}
+    STATE_MACHINE_NAME: ${self:service}-file-processing-${sls:stage}
+
+build:
+  esbuild:
+    bundle: true
+    minify: true
+    sourcemap: false
+    target: node20
+    platform: node
+
+functions:
+  pipelineStarter:
+    handler: src/starter.handler
+    timeout: 30
+    memorySize: 256
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - states:StartExecution
+        Resource:
+          Fn::Sub:
+            - arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${StateMachineName}
+            - StateMachineName: ${self:service}-file-processing-${sls:stage}
+    events:
+      - s3:
+          bucket: ${self:custom.s3Bucket}
+          event: s3:ObjectCreated:*
+          rules:
+            - prefix: uploads/
+            - suffix: .pdf
+          existing: true
+
+  extractText:
+    handler: src/steps/extractText.handler
+    memorySize: 1024
+    timeout: 120
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - s3:GetObject
+          - s3:GetObjectVersion
+        Resource:
+          Fn::Sub: arn:aws:s3:::${self:custom.s3Bucket}/*
+
+  chunkText:
+    handler: src/steps/chunkText.handler
+    memorySize: 256
+    timeout: 60
+
+  embedChunks:
+    handler: src/steps/embedChunks.handler
+    memorySize: 512
+    timeout: 120
+
+  indexChunks:
+    handler: src/steps/indexChunks.handler
+    memorySize: 512
+    timeout: 120
+
+  updateStatusSuccess:
+    handler: src/steps/updateStatusSuccess.handler
+    memorySize: 256
+    timeout: 30
+
+  updateStatusError:
+    handler: src/steps/updateStatusError.handler
+    memorySize: 256
+    timeout: 30
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - s3:GetObject
+          - s3:GetObjectVersion
+          - s3:HeadObject
+        Resource:
+          Fn::Sub: arn:aws:s3:::${self:custom.s3Bucket}/*
+
+resources:
+  Resources:
+    StatesExecutionRole:
+      Type: AWS::IAM::Role
+      DependsOn:
+        - ExtractTextLambdaFunction
+        - ChunkTextLambdaFunction
+        - EmbedChunksLambdaFunction
+        - IndexChunksLambdaFunction
+        - UpdateStatusSuccessLambdaFunction
+        - UpdateStatusErrorLambdaFunction
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: states.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: InvokePipelineLambdas
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - lambda:InvokeFunction
+                  Resource:
+                    - Fn::GetAtt:
+                        - ExtractTextLambdaFunction
+                        - Arn
+                    - Fn::GetAtt:
+                        - ChunkTextLambdaFunction
+                        - Arn
+                    - Fn::GetAtt:
+                        - EmbedChunksLambdaFunction
+                        - Arn
+                    - Fn::GetAtt:
+                        - IndexChunksLambdaFunction
+                        - Arn
+                    - Fn::GetAtt:
+                        - UpdateStatusSuccessLambdaFunction
+                        - Arn
+                    - Fn::GetAtt:
+                        - UpdateStatusErrorLambdaFunction
+                        - Arn
+
+    FileProcessingStateMachine:
+      Type: AWS::StepFunctions::StateMachine
+      DependsOn:
+        - ExtractTextLambdaFunction
+        - ChunkTextLambdaFunction
+        - EmbedChunksLambdaFunction
+        - IndexChunksLambdaFunction
+        - UpdateStatusSuccessLambdaFunction
+        - UpdateStatusErrorLambdaFunction
+      Properties:
+        StateMachineName: ${self:service}-file-processing-${sls:stage}
+        RoleArn:
+          Fn::GetAtt:
+            - StatesExecutionRole
+            - Arn
+        Definition:
+          Comment: PDF -> chunks -> embeddings -> Pinecone -> Nest status
+          StartAt: ExtractText
+          States:
+            ExtractText:
+              Type: Task
+              Resource:
+                Fn::GetAtt:
+                  - ExtractTextLambdaFunction
+                  - Arn
+              Next: ChunkText
+              Catch:
+                - ErrorEquals:
+                    - States.ALL
+                  ResultPath: $.lastError
+                  Next: UpdateStatusError
+            ChunkText:
+              Type: Task
+              Resource:
+                Fn::GetAtt:
+                  - ChunkTextLambdaFunction
+                  - Arn
+              Next: EmbedChunks
+              Catch:
+                - ErrorEquals:
+                    - States.ALL
+                  ResultPath: $.lastError
+                  Next: UpdateStatusError
+            EmbedChunks:
+              Type: Task
+              Resource:
+                Fn::GetAtt:
+                  - EmbedChunksLambdaFunction
+                  - Arn
+              Next: IndexChunks
+              Catch:
+                - ErrorEquals:
+                    - States.ALL
+                  ResultPath: $.lastError
+                  Next: UpdateStatusError
+            IndexChunks:
+              Type: Task
+              Resource:
+                Fn::GetAtt:
+                  - IndexChunksLambdaFunction
+                  - Arn
+              Next: UpdateStatusSuccess
+              Catch:
+                - ErrorEquals:
+                    - States.ALL
+                  ResultPath: $.lastError
+                  Next: UpdateStatusError
+            UpdateStatusSuccess:
+              Type: Task
+              Resource:
+                Fn::GetAtt:
+                  - UpdateStatusSuccessLambdaFunction
+                  - Arn
+              End: true
+              Catch:
+                - ErrorEquals:
+                    - States.ALL
+                  ResultPath: $.lastError
+                  Next: UpdateStatusError
+            UpdateStatusError:
+              Type: Task
+              Resource:
+                Fn::GetAtt:
+                  - UpdateStatusErrorLambdaFunction
+                  - Arn
+              End: true
