@@ -16,4 +16,7 @@ export const validationSchema = Joi.object({
     .max(604800)
     .default(300),
   AWS_DYNAMODB_TABLE_NAME: Joi.string().trim().min(1).required(),
+
+  /** Shared secret for Lambda / Step Functions → backend calls (e.g. PATCH /files/status). */
+  INTERNAL_PIPELINE_SECRET: Joi.string().trim().min(16).required(),
 });

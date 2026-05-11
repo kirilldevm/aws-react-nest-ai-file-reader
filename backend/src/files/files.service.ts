@@ -1,23 +1,25 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID, createHash } from 'crypto';
-import { PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import {
+  DeleteCommand,
+  GetCommand,
+  PutCommand,
+  UpdateCommand,
+} from '@aws-sdk/lib-dynamodb';
 import { DynamoDbService } from '../common/aws/dynamodb/dynamodb.service';
 import { S3Service } from '../common/aws/s3/s3.service';
 import { CreateFilePresignDto } from './dto/create-file-presign.dto';
 import { MAX_FILE_SIZE_BYTES, PDF_MIME_TYPE } from './constants/files.constants';
-
-type FileStatus = 'pending' | 'success' | 'error';
-type FileRecord = {
-  userEmail: string;
-  status: FileStatus;
-  s3Key: string;
-  originalFilename: string;
-  contentType: string;
-  fileSizeBytes: number;
-  createdAt: string;
-  updatedAt: string;
-  processingError?: string;
-};
+import {
+  PipelineFileStatus,
+  UpdateFileStatusDto,
+} from './dto/update-file-status.dto';
+import { FileRecord, FileStatus } from './types/files.types';
 
 @Injectable()
 export class FilesService {
@@ -38,6 +40,13 @@ export class FilesService {
     const expiresInSeconds = this.s3Service.getDefaultPresignExpiresSeconds();
     const now = new Date().toISOString();
     const normalizedEmail = dto.email.toLowerCase().trim();
+    const existingRecord = await this.getFileRecord(normalizedEmail);
+
+    if (existingRecord) {
+      throw new ConflictException(
+        'A file already exists for this user. Delete it before uploading a new one.',
+      );
+    }
 
     const uploadUrl = await this.s3Service.createUploadPresignedUrl({
       key,
@@ -101,6 +110,71 @@ export class FilesService {
     };
   }
 
+  async updateStatus(dto: UpdateFileStatusDto): Promise<{
+    status: FileStatus;
+    updatedAt: string;
+    error?: string;
+  }> {
+    const normalizedEmail = dto.email.toLowerCase().trim();
+    const existingRecord = await this.getFileRecord(normalizedEmail);
+
+    if (!existingRecord) {
+      throw new NotFoundException('No file record found for this user');
+    }
+
+    const updatedAt = new Date().toISOString();
+    const error = dto.status === PipelineFileStatus.Error ? dto.error : undefined;
+
+    const result = await this.dynamoDbService.getClient().send(
+      new UpdateCommand({
+        TableName: this.dynamoDbService.getTableName(),
+        Key: {
+          userEmail: normalizedEmail,
+        },
+        UpdateExpression:
+          'SET #status = :status, #updatedAt = :updatedAt, #processingError = :processingError',
+        ExpressionAttributeNames: {
+          '#status': 'status',
+          '#updatedAt': 'updatedAt',
+          '#processingError': 'processingError',
+        },
+        ExpressionAttributeValues: {
+          ':status': dto.status,
+          ':updatedAt': updatedAt,
+          ':processingError': error ?? null,
+        },
+        ReturnValues: 'ALL_NEW',
+      }),
+    );
+
+    return {
+      status: result.Attributes?.status as FileStatus,
+      updatedAt: result.Attributes?.updatedAt as string,
+      error: (result.Attributes?.processingError as string | null) ?? undefined,
+    };
+  }
+
+  async deleteFile(email: string): Promise<{ deleted: boolean }> {
+    const normalizedEmail = email.toLowerCase().trim();
+    const existingRecord = await this.getFileRecord(normalizedEmail);
+
+    if (!existingRecord) {
+      return { deleted: false };
+    }
+
+    await this.s3Service.deleteObjectByKey(existingRecord.s3Key);
+    await this.dynamoDbService.getClient().send(
+      new DeleteCommand({
+        TableName: this.dynamoDbService.getTableName(),
+        Key: {
+          userEmail: normalizedEmail,
+        },
+      }),
+    );
+
+    return { deleted: true };
+  }
+
   private validatePdfInput(dto: CreateFilePresignDto): void {
     const filename = dto.filename.toLowerCase();
     const contentType = dto.contentType.toLowerCase();
@@ -125,5 +199,18 @@ export class FilesService {
       .slice(0, 16);
 
     return `uploads/${emailHash}/${randomUUID()}.pdf`;
+  }
+
+  private async getFileRecord(email: string): Promise<FileRecord | null> {
+    const result = await this.dynamoDbService.getClient().send(
+      new GetCommand({
+        TableName: this.dynamoDbService.getTableName(),
+        Key: {
+          userEmail: email,
+        },
+      }),
+    );
+
+    return (result.Item as FileRecord | undefined) ?? null;
   }
 }

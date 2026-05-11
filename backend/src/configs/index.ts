@@ -1,6 +1,9 @@
 import { registerAs } from '@nestjs/config';
 
 export default registerAs('config', () => ({
+  internal: {
+    pipelineSecret: process.env.INTERNAL_PIPELINE_SECRET ?? '',
+  },
   aws: {
     region: process.env.AWS_REGION,
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,

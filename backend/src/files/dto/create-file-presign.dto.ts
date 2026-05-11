@@ -6,6 +6,7 @@ import {
   Max,
   Min,
 } from 'class-validator';
+import { MAX_FILE_SIZE_BYTES } from '../constants/files.constants';
 
 export class CreateFilePresignDto {
   @IsEmail()
@@ -21,6 +22,6 @@ export class CreateFilePresignDto {
 
   @IsInt()
   @Min(1)
-  @Max(10 * 1024 * 1024)
+  @Max(MAX_FILE_SIZE_BYTES)
   fileSize: number;
 }
