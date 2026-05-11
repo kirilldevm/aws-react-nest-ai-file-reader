@@ -19,4 +19,14 @@ export const validationSchema = Joi.object({
 
   /** Shared secret for Lambda / Step Functions → backend calls (e.g. PATCH /files/status). */
   INTERNAL_PIPELINE_SECRET: Joi.string().trim().min(16).required(),
+
+  OPENAI_API_KEY: Joi.string().trim().min(1).required(),
+  OPENAI_EMBEDDING_MODEL: Joi.string().trim().default('text-embedding-3-small'),
+  OPENAI_CHAT_MODEL: Joi.string().trim().default('gpt-4o-mini'),
+
+  PINECONE_API_KEY: Joi.string().trim().min(1).required(),
+  PINECONE_INDEX_NAME: Joi.string().trim().min(1).required(),
+
+  CHAT_TOP_K: Joi.number().integer().min(1).max(50).default(8),
+  CHAT_MAX_CONTEXT_CHARS: Joi.number().integer().min(1000).max(100_000).default(16_000),
 });

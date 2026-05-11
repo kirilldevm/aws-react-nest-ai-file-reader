@@ -8,5 +8,6 @@ import { FilesService } from './files.service';
   imports: [AwsModule],
   controllers: [FilesController],
   providers: [FilesService, InternalSecretGuard],
+  exports: [FilesService],
 })
 export class FilesModule {}

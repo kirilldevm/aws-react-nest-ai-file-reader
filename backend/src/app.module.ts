@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import { AwsModule } from './common/aws/aws.module';
 import configs from './configs';
 import { validationSchema } from './configs/env.config';
+import { ChatModule } from './chat/chat.module';
 import { FilesModule } from './files/files.module';
 
 @Module({
@@ -16,6 +17,7 @@ import { FilesModule } from './files/files.module';
       validationSchema: validationSchema,
     }),
     FilesModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],

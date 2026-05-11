@@ -14,4 +14,18 @@ export default registerAs('config', () => ({
       process.env.AWS_S3_PRESIGN_EXPIRES_SECONDS ?? 300,
     ),
   },
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY,
+    embeddingModel:
+      process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
+    chatModel: process.env.OPENAI_CHAT_MODEL ?? 'gpt-4o-mini',
+  },
+  pinecone: {
+    apiKey: process.env.PINECONE_API_KEY,
+    indexName: process.env.PINECONE_INDEX_NAME,
+  },
+  chat: {
+    topK: Number(process.env.CHAT_TOP_K ?? 8),
+    maxContextChars: Number(process.env.CHAT_MAX_CONTEXT_CHARS ?? 16_000),
+  },
 }));
