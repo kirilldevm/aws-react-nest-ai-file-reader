@@ -6,8 +6,8 @@ on:
     branches:
       - main
     paths:
-      - "backend/**"
-      - ".github/workflows/deploy-backend-ec2.yml"
+      - 'backend/**'
+      - '.github/workflows/deploy-backend-ec2.yml'
 
 concurrency:
   group: deploy-backend-ec2
@@ -16,13 +16,14 @@ concurrency:
 jobs:
   deploy:
     name: Build And Deploy Backend
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, linux, x64, backend-ec2]
     defaults:
       run:
         shell: bash
     env:
       DEPLOY_PATH: ${{ vars.EC2_BACKEND_PATH }}
       SERVICE_NAME: ${{ vars.EC2_BACKEND_SERVICE }}
+      BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
       NODE_ENV: production
     steps:
       - name: Validate required variables
@@ -30,6 +31,7 @@ jobs:
           set -euo pipefail
           : "${DEPLOY_PATH:?Missing repo variable EC2_BACKEND_PATH}"
           : "${SERVICE_NAME:?Missing repo variable EC2_BACKEND_SERVICE}"
+          : "${BACKEND_ENV:?Missing repo secret BACKEND_ENV}"
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -37,7 +39,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
 
       - name: Sync backend to deploy path
         run: |
@@ -53,6 +55,8 @@ jobs:
         working-directory: ${{ env.DEPLOY_PATH }}
         run: |
           set -euo pipefail
+          printf "%s\n" "$BACKEND_ENV" > .env
+          chmod 600 .env
           npm ci
           npm run build
           npm prune --omit=dev
